@@ -1,18 +1,161 @@
-# COVID-19-Data-Analysis-Repository-Using-SQL
-This GitHub repository is dedicated to COVID-19 data analysis using SQL. It serves as a centralized hub for storing SQL scripts, documentation, and analysis outputs related to COVID-19 data exploration.
-Key Components:
+/*
+Covid 19 Data Exploration 
 
-Key Components:
-1.	SQL Scripts: Organized into folders based on functionality (e.g., data exploration, statistical analysis, continental breakdowns, vaccination coverage). Well-commented and following best practices for readability.
-2.	Documentation: Comprehensive documentation detailing project objectives, dataset sources, SQL queries used, and insights derived. Includes a README.md file with an overview, setup instructions, and links to resources.
-3.	Analysis Outputs: Visualizations, reports, and insights derived from the SQL analysis. Includes charts, graphs, and summary statistics showcasing key findings from the COVID-19 data.
-4.	Contribution Guidelines: Clear guidelines for contributing to the project. Instructions for submitting bug fixes, adding new analysis scripts, or improving documentation.
-5.	Interactive Dashboards (Optional): Explore the integration of interactive dashboards using visualization tools like Tableau, Power BI, or Plotly for intuitive data exploration.
-Project Benefits:
-1.	Collaboration: Facilitates collaboration among data enthusiasts, analysts, and researchers interested in COVID-19 data analysis. Encourages contributions and feedback to improve the project's quality and scope.
-2.	Knowledge Sharing: Serves as a valuable resource for learning SQL for data analysis purposes. Provides tutorials, walkthroughs, and explanations of SQL techniques used in the project.
-3.	Real-World Impact: Contributes to the global effort to combat the COVID-19 pandemic by providing actionable insights derived from data analysis. Empowers decision-makers, healthcare professionals, and policymakers with evidence-based information.
-4.	Continuous Improvement: Cultivates a culture of continuous improvement by actively maintaining and updating the project with the latest COVID-19 data, analysis techniques, and insights. Incorporates feedback from users to enhance usability and relevance.
-Join the community of data enthusiasts and make a meaningful impact today! Contribute to understanding, mitigating, and overcoming the challenges posed by the COVID-19 pandemic through data-driven insights.
-#GitHub #COVID19 #DataAnalysis #SQL #OpenSource #Community
+Skills used: Joins, CTE's, Temp Tables, Windows Functions, Aggregate Functions, Creating Views, Converting Data Types
+
+*/
+
+Select *
+From PortfolioProject..CovidDeaths
+Where continent is not null 
+order by 3,4
+
+
+-- Select Data that we are going to be starting with
+
+Select Location, date, total_cases, new_cases, total_deaths, population
+From PortfolioProject..CovidDeaths
+Where continent is not null 
+order by 1,2
+
+
+-- Total Cases vs Total Deaths
+-- Shows likelihood of dying if you contract covid in your country
+
+Select Location, date, total_cases,total_deaths, (total_deaths/total_cases)*100 as DeathPercentage
+From PortfolioProject..CovidDeaths
+Where location like '%states%'
+and continent is not null 
+order by 1,2
+
+
+-- Total Cases vs Population
+-- Shows what percentage of population infected with Covid
+
+Select Location, date, Population, total_cases,  (total_cases/population)*100 as PercentPopulationInfected
+From PortfolioProject..CovidDeaths
+--Where location like '%states%'
+order by 1,2
+
+
+-- Countries with Highest Infection Rate compared to Population
+
+Select Location, Population, MAX(total_cases) as HighestInfectionCount,  Max((total_cases/population))*100 as PercentPopulationInfected
+From PortfolioProject..CovidDeaths
+--Where location like '%states%'
+Group by Location, Population
+order by PercentPopulationInfected desc
+
+
+-- Countries with Highest Death Count per Population
+
+Select Location, MAX(cast(Total_deaths as int)) as TotalDeathCount
+From PortfolioProject..CovidDeaths
+--Where location like '%states%'
+Where continent is not null 
+Group by Location
+order by TotalDeathCount desc
+
+
+
+-- BREAKING THINGS DOWN BY CONTINENT
+
+-- Showing contintents with the highest death count per population
+
+Select continent, MAX(cast(Total_deaths as int)) as TotalDeathCount
+From PortfolioProject..CovidDeaths
+--Where location like '%states%'
+Where continent is not null 
+Group by continent
+order by TotalDeathCount desc
+
+
+
+-- GLOBAL NUMBERS
+
+Select SUM(new_cases) as total_cases, SUM(cast(new_deaths as int)) as total_deaths, SUM(cast(new_deaths as int))/SUM(New_Cases)*100 as DeathPercentage
+From PortfolioProject..CovidDeaths
+--Where location like '%states%'
+where continent is not null 
+--Group By date
+order by 1,2
+
+
+
+-- Total Population vs Vaccinations
+-- Shows Percentage of Population that has recieved at least one Covid Vaccine
+
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CONVERT(int,vac.new_vaccinations)) OVER (Partition by dea.Location Order by dea.location, dea.Date) as RollingPeopleVaccinated
+--, (RollingPeopleVaccinated/population)*100
+From PortfolioProject..CovidDeaths dea
+Join PortfolioProject..CovidVaccinations vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+where dea.continent is not null 
+order by 2,3
+
+
+-- Using CTE to perform Calculation on Partition By in previous query
+
+With PopvsVac (Continent, Location, Date, Population, New_Vaccinations, RollingPeopleVaccinated)
+as
+(
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CONVERT(int,vac.new_vaccinations)) OVER (Partition by dea.Location Order by dea.location, dea.Date) as RollingPeopleVaccinated
+--, (RollingPeopleVaccinated/population)*100
+From PortfolioProject..CovidDeaths dea
+Join PortfolioProject..CovidVaccinations vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+where dea.continent is not null 
+--order by 2,3
+)
+Select *, (RollingPeopleVaccinated/Population)*100
+From PopvsVac
+
+
+
+-- Using Temp Table to perform Calculation on Partition By in previous query
+
+DROP Table if exists #PercentPopulationVaccinated
+Create Table #PercentPopulationVaccinated
+(
+Continent nvarchar(255),
+Location nvarchar(255),
+Date datetime,
+Population numeric,
+New_vaccinations numeric,
+RollingPeopleVaccinated numeric
+)
+
+Insert into #PercentPopulationVaccinated
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CONVERT(int,vac.new_vaccinations)) OVER (Partition by dea.Location Order by dea.location, dea.Date) as RollingPeopleVaccinated
+--, (RollingPeopleVaccinated/population)*100
+From PortfolioProject..CovidDeaths dea
+Join PortfolioProject..CovidVaccinations vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+--where dea.continent is not null 
+--order by 2,3
+
+Select *, (RollingPeopleVaccinated/Population)*100
+From #PercentPopulationVaccinated
+
+
+
+
+-- Creating View to store data for later visualizations
+
+Create View PercentPopulationVaccinated as
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CONVERT(int,vac.new_vaccinations)) OVER (Partition by dea.Location Order by dea.location, dea.Date) as RollingPeopleVaccinated
+--, (RollingPeopleVaccinated/population)*100
+From PortfolioProject..CovidDeaths dea
+Join PortfolioProject..CovidVaccinations vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+where dea.continent is not null 
+
 
